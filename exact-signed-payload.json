@@ -1,0 +1,19 @@
+{
+  "id": "evt_test_webhook",
+  "object": "event",
+  "type": "checkout.session.completed",
+  "email": "shantanunitinpimpale@gmail.com",
+  "item_id": "176",
+  "data": {
+    "object": {
+      "id": "cus_S68vIzLw35lvTF",
+      "object": "checkout.session",
+      "customer_email": "shantanunitinpimpale@gmail.com",
+      "metadata": {
+        "item_id": "176",
+        "item_type": "course"
+      },
+      "payment_status": "paid"
+    }
+  }
+}
