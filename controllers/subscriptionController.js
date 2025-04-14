@@ -3,9 +3,9 @@ const User = require('../models/User');
 
 exports.createSubscription = async (req, res) => {
   try {
-    const { userId, email, planId, autoRenew, paymentMethod, courseId } = req.body;
+    const { userId, email, planId, autoRenew, paymentMethod, courseId, stripe_payment_id } = req.body;
 
-    if (!userId || !email || !planId) {
+    if (!userId || !email || !planId || !stripe_payment_id) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -17,7 +17,7 @@ exports.createSubscription = async (req, res) => {
     const subscriptionData = {
       UserID: userId,
       email,
-      stripe_payment_id: req.body.stripePaymentId || 'pending',
+      stripe_payment_id,
       plan_id: planId,
       auto_renew: autoRenew !== undefined ? autoRenew : true,
       payment_method: paymentMethod || 'card',

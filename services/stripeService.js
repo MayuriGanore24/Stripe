@@ -8,8 +8,8 @@ if (!stripeApiKey) {
 const stripe = require('stripe')(stripeApiKey);
 
 const PLAN_PRICE_MAPPING = {
-  "Healthtech": "price_1R5K0MD8Ctxcuw2wwGjlh4S5",
-  "Emerging tech": "price_1R5JzQD8Ctxcuw2wU01VfygV"
+  "Healthtech": "price_1RD351SBDPKI6dEzL5UPnZ00",
+  "Emerging tech": "price_1RD37ASBDPKI6dEzWH3HAmC8"
 };
 
 class StripeService {

@@ -18,4 +18,34 @@ router.put('/invoice/:invoiceId/finalize', protect, invoiceController.finalizeIn
 // POST /stripe/invoice/:invoiceId/pay - Pay an invoice
 router.post('/invoice/:invoiceId/pay', protect, invoiceController.payInvoice);
 
+const { stripe } = require("../server");
+const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+router.post("/webhook", express.raw({ type: 'application/json' }), (request, response) => {
+  const sig = request.headers["stripe-signature"];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(request.body, sig, endpointSecret);
+  } catch (err) {
+    console.log(`⚠️ Webhook signature error: ${err.message}`);
+    return response.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Handle the checkout.session.completed event
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
+
+    const email = session.customer_email;
+    const courseId = session.metadata.course_id;
+
+    console.log(`✅ Payment complete. Grant access to ${email} for course ${courseId}`);
+
+    // 👉 Call your custom WordPress endpoint here to give access
+    giveUserAccessToTutorLMS(email, courseId);
+  }
+
+  response.status(200).send("Received");
+});
+
 module.exports = router;
