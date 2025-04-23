@@ -68,7 +68,8 @@ class SubscriptionService {
         metadata: {
           source: 'express_app',
           user_id: String(UserID),
-          course_id: Solution_id ? String(Solution_id) : 'none'
+          course_id: Solution_id ? String(Solution_id) : 'none',
+          plan_id: plan_id
         }
       });
 
@@ -105,20 +106,30 @@ class SubscriptionService {
       // First check if we have a stripe_subscription_id
       let subscription = await Subscription.findById(subscriptionId);
 
-      // If not found, try to find by stripe_payment_id
+      // If not found, try to find by stripe_subscription_id
+      if (!subscription) {
+        subscription = await Subscription.findOne({ stripe_subscription_id: subscriptionId });
+      }
+
+      // If still not found, try to find by stripe_payment_id
       if (!subscription) {
         subscription = await Subscription.findOne({ stripe_payment_id: subscriptionId });
       }
 
       if (!subscription) {
-        // No local subscription found - might be coming from Tutor LMS
-        const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripe_payment_id);
-
-        return { subscription: null, stripeSubscription };
+        // No local subscription found - fetch from Stripe
+        try {
+          const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
+          return { subscription: null, stripeSubscription };
+        } catch (stripeError) {
+          throw new Error(`Subscription not found in database or Stripe: ${stripeError.message}`);
+        }
       }
 
       // Get subscription from Stripe
-      const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripe_payment_id);
+      const stripeSubscription = await stripe.subscriptions.retrieve(
+        subscription.stripe_subscription_id || subscriptionId
+      );
 
       // Determine subscription status based on Stripe status
       let status = 'active';
@@ -146,35 +157,36 @@ class SubscriptionService {
 
   async cancelSubscription(subscriptionId) {
     try {
-      // First check if we have a stripe_subscription_id
-      let subscription = await Subscription.findOne({ stripe_subscription_id: subscriptionId });
-
-      // If not found, try to find by stripe_payment_id
-      if (!subscription) {
-        subscription = await Subscription.findOne({ stripe_payment_id: subscriptionId });
+      // 1) Try to look up a local record by Stripe fields
+      let subscription = await Subscription.findOne({ stripe_subscription_id: subscriptionId })
+        || await Subscription.findOne({ stripe_payment_id: subscriptionId });
+  
+      // 2) Only if it *could* be a Mongo _id, try that
+      if (!subscription && mongoose.Types.ObjectId.isValid(subscriptionId)) {
+        subscription = await Subscription.findById(subscriptionId);
       }
-
-      if (!subscription) {
-        // No local subscription found
-        const canceledSubscription = await stripe.subscriptions.update(subscriptionId, {
-          cancel_at_period_end: true
-        });
-        return { subscription: null, canceledSubscription };
-      }
-
-      // Cancel subscription in Stripe
-      const canceledSubscription = await stripe.subscriptions.update(subscriptionId, {
+  
+      // 3) Cancel in Stripe regardless of local record existence
+      const stripeSubId = subscription
+        ? subscription.stripe_subscription_id
+        : subscriptionId;
+  
+      const canceledSubscription = await stripe.subscriptions.update(stripeSubId, {
         cancel_at_period_end: true
       });
-
-      // Update local subscription
-      subscription.sub_status = 'cancel';
-      subscription.auto_renew = false;
-      subscription.End_Date = new Date(canceledSubscription.current_period_end * 1000).toISOString();
-      subscription.updated_at = new Date();
-
+  
+      // 4) If no local record, return Stripe data only
+      if (!subscription) {
+        return { subscription: null, canceledSubscription };
+      }
+  
+      // 5) Otherwise update your local document
+      subscription.sub_status   = 'cancel';
+      subscription.auto_renew   = false;
+      subscription.End_Date     = new Date(canceledSubscription.current_period_end * 1000).toISOString();
+      subscription.updated_at   = new Date();
       await subscription.save();
-
+  
       return { subscription, canceledSubscription };
     } catch (error) {
       throw new Error(`Cancel subscription error: ${error.message}`);
@@ -316,7 +328,91 @@ class SubscriptionService {
     }
   }
 
-  // New method to verify access for Tutor LMS courses
+  // New method to sync a single subscription from Stripe
+  async syncSubscriptionFromStripe(subscriptionId, userId, email) {
+    try {
+      // Get subscription details from Stripe
+      const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
+      
+      if (!stripeSubscription) {
+        throw new Error(`Subscription not found in Stripe: ${subscriptionId}`);
+      }
+      
+      // Check if subscription already exists in database
+      const existingSubscription = await Subscription.findOne({
+        stripe_subscription_id: subscriptionId
+      });
+
+      // Determine status
+      let status = 'active';
+      if (stripeSubscription.status === 'canceled' || stripeSubscription.cancel_at_period_end) {
+        status = 'cancel';
+      } else if (stripeSubscription.status !== 'active') {
+        status = 'other';
+      }
+
+      // Retrieve payment method
+      let paymentMethod = 'card';
+      if (stripeSubscription.default_payment_method) {
+        const method = await stripe.paymentMethods.retrieve(stripeSubscription.default_payment_method);
+        paymentMethod = method.type;
+      }
+
+      // Determine plan ID from metadata or price
+      let planId = stripeSubscription.metadata?.plan_id || 'Unknown';
+      if (planId === 'Unknown' && stripeSubscription.items?.data.length) {
+        const priceId = stripeSubscription.items.data[0].price.id;
+        for (const [key, value] of Object.entries(PLAN_PRICE_MAPPING)) {
+          if (value === priceId) {
+            planId = key;
+            break;
+          }
+        }
+      }
+
+      // Get Solution ID from metadata
+      const solutionId = stripeSubscription.metadata?.course_id || null;
+
+      // Prepare data
+      const subscriptionData = {
+        UserID: userId,
+        email,
+        stripe_payment_id: stripeSubscription.latest_invoice || stripeSubscription.id,
+        stripe_subscription_id: subscriptionId,
+        plan_id: planId,
+        Solution_id: solutionId,
+        auto_renew: !stripeSubscription.cancel_at_period_end,
+        sub_status: status,
+        payment_method: paymentMethod,
+        start_date: new Date(stripeSubscription.current_period_start * 1000).toISOString(),
+        End_Date: stripeSubscription.cancel_at
+          ? new Date(stripeSubscription.cancel_at * 1000).toISOString()
+          : new Date(stripeSubscription.current_period_end * 1000).toISOString(),
+        updated_at: new Date()
+      };
+
+      if (existingSubscription) {
+        await Subscription.updateOne(
+          { _id: existingSubscription._id },
+          { $set: subscriptionData }
+        );
+        return { updated: true, subscription: subscriptionData };
+      } else {
+        const newSubscription = new Subscription({
+          _id: new mongoose.Types.ObjectId(),
+          ...subscriptionData,
+          created_at: new Date()
+        });
+        await newSubscription.save();
+        return { created: true, subscription: subscriptionData };
+      }
+    } catch (error) {
+      throw new Error(`Sync single subscription error: ${error.message}`);
+    }
+  }
+
+
+  // Method to verify access for Tutor LMS courses
   async verifyTutorLMSAccess(userId, courseId) {
     try {
       // Find active subscriptions for this course

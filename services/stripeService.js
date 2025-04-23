@@ -15,6 +15,7 @@ const PLAN_PRICE_MAPPING = {
 class StripeService {
   async createCheckoutSession({ name, amount, email, itemId, itemType, successUrl, cancelUrl }) {
     try {
+      console.log("Received body in createCheckoutSession:", req.body);
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         mode: 'payment',

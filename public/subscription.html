@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Manage Subscription</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Manage Your Subscription</h1>
+    <form id="cancel-form">
+      <label for="subscriptionId">Subscription ID:</label>
+      <input type="text" id="subscriptionId" name="subscriptionId" required>
+      <button type="submit">Cancel Subscription</button>
+    </form>
+    <div id="response"></div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const params = new URLSearchParams(window.location.search);
+      const sid = params.get("sid");
+
+      const cancelForm = document.getElementById('cancel-form');
+      const responseDiv = document.getElementById('response');
+      const inputField = document.getElementById('subscriptionId');
+
+      // Function to get subscription ID from session ID
+      async function getSubscriptionFromSession(sessionId) {
+        try {
+          const response = await fetch(`/api/get-subscription-from-session/${sessionId}`);
+          if (!response.ok) {
+            throw new Error('Failed to retrieve subscription details');
+          }
+          const data = await response.json();
+          return data.subscriptionId;
+        } catch (error) {
+          console.error('Error fetching subscription:', error);
+          responseDiv.innerText = `⚠️ Error: ${error.message}`;
+          return null;
+        }
+      }
+
+      let subscriptionId = null;
+      
+      if (sid) {
+        responseDiv.innerText = "Loading subscription details...";
+        
+        // Check if it's a checkout session ID (starts with cs_)
+        if (sid.startsWith('cs_')) {
+          // Get the actual subscription ID from the session
+          const subId = await getSubscriptionFromSession(sid);
+          if (subId) {
+            subscriptionId = subId;
+            responseDiv.innerText = `✅ Retrieved subscription: ${subId}`;
+            localStorage.setItem("subscriptionId", subId);
+          }
+        } else {
+          // Assume it's already a subscription ID
+          subscriptionId = sid;
+          responseDiv.innerText = `✅ Your Subscription ID: ${sid}`;
+          localStorage.setItem("subscriptionId", sid);
+        }
+      } else {
+        // Fall back to localStorage
+        subscriptionId = localStorage.getItem("subscriptionId");
+        if (subscriptionId) {
+          responseDiv.innerText = `✅ Your Subscription ID (from storage): ${subscriptionId}`;
+        } else {
+          responseDiv.innerText = "⚠️ No subscription ID found.";
+        }
+      }
+      
+      if (subscriptionId) {
+        inputField.value = subscriptionId;
+        console.log("Using subscription ID:", subscriptionId);
+      }
+
+      // Add event listener for the cancel form
+      cancelForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const subId = inputField.value.trim();
+        if (!subId) {
+          responseDiv.innerText = "⚠️ No subscription ID to cancel.";
+          return;
+        }
+        
+        try {
+          responseDiv.innerText = "Processing cancellation...";
+          
+          // Use the endpoint that works in Postman
+          const response = await fetch(`http://localhost:5000/api/subscriptions/cancel/${subId}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ subscriptionId: subId })
+          });
+          
+          // Check if response is JSON before trying to parse it
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const data = await response.json();
+            
+            if (!response.ok) {
+              throw new Error(data.error || 'Unknown error');
+            }
+            
+            responseDiv.innerText = `✅ ${data.message || 'Subscription cancelled successfully!'}`;
+            localStorage.removeItem("subscriptionId");
+          } else {
+            // Handle non-JSON response
+            const text = await response.text();
+            if (!response.ok) {
+              throw new Error(`Server returned: ${response.status} ${response.statusText}`);
+            }
+            responseDiv.innerText = `✅ Subscription cancelled successfully`;
+            localStorage.removeItem("subscriptionId");
+          }
+        } catch (error) {
+          console.error('Error cancelling subscription:', error);
+          responseDiv.innerText = `❌ Error: ${error.message || 'Failed to cancel subscription'}`;
+        }
+      });
+    });
+  </script>
+</body>
+</html>

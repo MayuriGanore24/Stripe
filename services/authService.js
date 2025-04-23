@@ -23,7 +23,10 @@ const loginUser = async (email, password) => {
         throw new Error("Invalid credentials");
     }
 
-    return generateToken(user);
+    const token = generateToken(user);
+
+    return { user, token };
 };
+
 
 module.exports = { loginUser, createUser };

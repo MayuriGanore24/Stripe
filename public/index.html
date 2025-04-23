@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Course Selection</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Available Courses</h1>
+    <div class="course-buttons">
+      <div class="course-item">
+        <h2>Emerging Tech Course</h2>
+        <button data-course-id="1">View Course Details</button>
+      </div>
+      <div class="course-item">
+        <h2>HealthTech AI</h2>
+        <button data-course-id="2">View Course Details</button>
+      </div>
+      <div class="course-item">
+        <h2>FlexPick</h2>
+        <button data-course-id="3">View Course Details</button>
+      </div>
+      <div class="course-item">
+        <h2>Emerging Tech Course(Annual)</h2>
+        <button data-course-id="4">View Course Details</button>
+      </div>
+      <div class="course-item">
+        <h2>HealthTech AI(Annual)</h2>
+        <button data-course-id="5">View Course Details</button>
+      </div>
+    </div>
+    
+    <div id="course-details" class="course-details hidden">
+      <h2>Selected Course Details</h2>
+      <div id="details-content"></div>
+      <button id="checkout-button" class="checkout-button">Proceed to Checkout</button>
+    </div>
+  </div>
+  <a href="subscription.html">Go to Manage Subscription</a>
+  <script src="script.js"></script>
+</body>
+</html>

@@ -1,5 +1,6 @@
 const subscriptionService = require('../services/subscriptionService');
 const User = require('../models/User');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 exports.createSubscription = async (req, res) => {
   try {
@@ -79,6 +80,9 @@ exports.cancelSubscription = async (req, res) => {
   }
 };
 
+
+
+
 exports.syncSubscriptions = async (req, res) => {
   try {
     const { email } = req.body;
@@ -116,6 +120,67 @@ exports.getUserSubscriptions = async (req, res) => {
     });
   } catch (error) {
     console.error('Get user subscriptions error:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// New method to get subscription from session ID
+exports.getSubscriptionFromSession = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Session ID is required' });
+    }
+    
+    const session = await stripe.checkout.sessions.retrieve(
+      sessionId,
+      { expand: ['subscription'] }
+    );
+    
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    
+    if (!session.subscription) {
+      return res.status(202).json({ 
+        message: 'Subscription not yet available. Payment may still be processing.',
+        sessionStatus: session.status,
+        paymentStatus: session.payment_status
+      });
+    }
+    
+    // Optionally sync this subscription to your database
+    if (session.customer && session.subscription) {
+      try {
+        const customer = await stripe.customers.retrieve(session.customer);
+        
+        if (customer && customer.email) {
+          // Try to find user by email
+          const user = await User.findOne({ email: customer.email });
+          
+          if (user) {
+            // Create a subscription record in your database
+            await subscriptionService.syncSubscriptionFromStripe(
+              session.subscription.id, 
+              user._id, 
+              customer.email
+            );
+          }
+        }
+      } catch (syncError) {
+        console.error('Error syncing subscription:', syncError);
+        // Continue - we can still return subscription info
+      }
+    }
+    
+    res.json({
+      subscription: session.subscription,
+      sessionStatus: session.status
+    });
+    
+  } catch (error) {
+    console.error('Error retrieving subscription from session:', error);
     res.status(500).json({ error: error.message });
   }
 };

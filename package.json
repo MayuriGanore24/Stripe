@@ -1,7 +1,7 @@
 {
   "name": "stripe-learndash-service",
   "version": "1.0.0",
-  "description": "",
+  "description": "��#\u0000 \u0000S\u0000t\u0000r\u0000i\u0000p\u0000e\u0000\r\u0000 \u0000#\u0000 \u0000S\u0000t\u0000r\u0000i\u0000p\u0000e\u0000\r\u0000 \u0000",
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
@@ -12,18 +12,23 @@
   "license": "ISC",
   "dependencies": {
     "@railway/cli": "^4.0.0",
+    "@stripe/stripe-js": "^7.1.0",
     "axios": "^1.8.4",
     "bcryptjs": "^3.0.2",
     "body-parser": "^1.20.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "express-json": "^1.0.0",
     "express-rate-limit": "^7.5.0",
+    "express-session": "^1.18.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
+    "mongodb": "^6.15.0",
     "mongoose": "^8.13.1",
     "morgan": "^1.10.0",
     "nodemon": "^1.19.4",
+    "path": "^0.12.7",
     "raw-body": "^3.0.0",
     "stripe": "^17.7.0",
     "stripe-learndash-service": "file:"

@@ -21,31 +21,37 @@ router.post('/invoice/:invoiceId/pay', protect, invoiceController.payInvoice);
 const { stripe } = require("../server");
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-router.post("/webhook", express.raw({ type: 'application/json' }), (request, response) => {
-  const sig = request.headers["stripe-signature"];
-  let event;
+router.post('/webhook', async (req, res) => {
+  const event = req.body;
 
-  try {
-    event = stripe.webhooks.constructEvent(request.body, sig, endpointSecret);
-  } catch (err) {
-    console.log(`⚠️ Webhook signature error: ${err.message}`);
-    return response.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  // Handle the checkout.session.completed event
-  if (event.type === "checkout.session.completed") {
+  if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
 
+    // Step 1: Get JWT
+    const token = await getJwtToken();
+
+    // Step 2: Create or fetch WordPress user
     const email = session.customer_email;
-    const courseId = session.metadata.course_id;
+    const username = email.split('@')[0];
+    const wpUser = await findOrCreateUser(token, {
+      username,
+      email,
+      password: 'user@123',
+      roles: ['subscriber']
+    });
 
-    console.log(`✅ Payment complete. Grant access to ${email} for course ${courseId}`);
+    // Step 3: Determine Enrollment Type
+    let courseData = session.metadata || stripeToCourseMap[session.line_items[0].price.id];
 
-    // 👉 Call your custom WordPress endpoint here to give access
-    giveUserAccessToTutorLMS(email, courseId);
+    if (!courseData) return res.status(400).send({ error: 'Course info not found' });
+
+    // Step 4: Enroll user in course or bundle
+    await enrollUserInCourse(token, wpUser.id, courseData.course_id, courseData.tag_id);
+
+    res.status(200).send({ success: true });
+  } else {
+    res.status(400).send({ message: 'Event not handled' });
   }
-
-  response.status(200).send("Received");
 });
 
 module.exports = router;
